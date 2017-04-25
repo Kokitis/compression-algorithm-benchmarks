@@ -11,7 +11,8 @@ import time
 BENCHMARK_FILE = os.path.join(os.getcwd(), "compression_benchmarks.tsv")
 STANDARD_BENCHMARK_FILENAME = "standard_benchmarks.tsv"
 OUTPUT_FOLDER = "C:\\Users\\Deitrickc\\Documents\\UPMC Files\\Projects\\misc\\output files\\"
-COMPUTER_NAME = "HP"
+COMPUTER_NAME = os.getenv('COMPUTERNAME')
+OVERWRITE_FILES = True #Whether to overwrite existing files (True) or skip over them (False)
 
 def readCSV(filename, **kwargs):
 	delimiter = kwargs.get('delimiter', kwargs.get('sep', '\t'))
@@ -30,10 +31,10 @@ def readCSV(filename, **kwargs):
 
 def writeCSV(table, filename, **kwargs):
 	#pprint(table)
+	if len(table) == 0: return None
 	if kwargs.get('fieldnames') is None:
 		fieldnames = sorted(table[0].keys())
 	delimiter = kwargs.get('delimiter', kwargs.get('sep', '\t'))
-
 	with open(filename, 'w', newline = "") as file1:
 		writer = csv.DictWriter(file1, delimiter = delimiter, fieldnames = fieldnames)
 		writer.writeheader()
@@ -75,6 +76,9 @@ class Algorithm:
 				duration: int, float; default None
 					The standard duration to use when calculating the Weissman score.
 		"""
+		self.tag = kwargs.get('tag', "")
+		if self.tag != "": self.tag += '.'
+		print("\tBenchmarking the algorithm used for", self.ext, 'files.')
 		self.setUpEnvironment(kwargs)
 		self.runWorkflow(input_file, output_folder, use_label = kwargs.get('label'))
 
@@ -95,27 +99,33 @@ class Algorithm:
 
 	def setUpEnvironment(self, kwargs):
 		#self.program = "C:/Program Files/PeaZip/res/7z/7z.exe"
-		self.program = '\"F:\\Program Files\\PeaZip\\res\\7z\\7z.exe\"'
+		self.program = self.getProgramLocation()
+		self.options = self.getAvailableOptions()
 		self._most_recent_run = dict()
 		self._last_run_label = None
 		if "name" not in dir(self):
 			self.name = "Undefined_Name"
 			self.ext = "Undefined_Ext"
-	def runCommand(self, command, label, input_file, output_folder):
+	def runCommand(self, label, input_file, output_folder):
 		path, input_basename = os.path.split(input_file)
-		output_file = os.path.join(output_folder, input_basename + self.ext)
+		output_file = os.path.join(output_folder, self.tag + input_basename + '.' + label + self.ext)
 		initial_time = datetime.datetime.now()
 		#start = time.time()
-		command = command.format(program = self.program,
-			input_folder = os.path.dirname(input_file),
-			input_file = input_file,
-			output_file = output_file)
-		if not os.path.exists(output_file) or True:
+
+		command = self.getAlgorithmCommand(label, input_file, output_file)
+
+		print("\t\tUsing settings as", label, end = ".")
+		if not os.path.exists(output_file) or OVERWRITE_FILES:
 			Terminal(command)
+		else:
+			print("\tThe file already existed.")
+			return None
 
 		final_time = datetime.datetime.now()
 		#stop = time.time()
 		duration = final_time - initial_time
+		iso_duration = isodate.duration_isoformat(duration)
+		print("\tFinished in", iso_duration)
 		#duration = stop - start
 
 		initial_ext = os.path.splitext(input_file)[-1]
@@ -133,7 +143,7 @@ class Algorithm:
 			'finalFileType': final_ext,
 			'finalSize': final_size,
 			'finalTime': final_time.isoformat(),
-			'duration': isodate.duration_isoformat(duration),
+			'duration': iso_duration,
 			'label': label,
 			'computer': COMPUTER_NAME,
 			'filename': os.path.basename(input_file)
@@ -148,50 +158,114 @@ class Algorithm:
 				'label': string
 					If provided, all other commands will be skipped.
 		"""
-		commands = self._defineCommands()
+		#commands = self._defineCommands()
+		available_labels = sorted(self.options.keys())
+		if use_label is not None: 
+			available_labels = [i for i in available_labels if i == use_label]
+		for label in available_labels:
 
-		for label, command in commands.items():
-			if use_label is not None and label != use_label: continue
-			print("Running {0} ({1})".format(self.name, label))
-
-			self._most_recent_run[label] = self.runCommand(command, label, input_file, output_folder)
+			self._most_recent_run[label] = self.runCommand(label, input_file, output_folder)
 			self._last_run_label = label
+	def getAlgorithmCommand(self, label, input_file, output_file):
+		template = self.getCommandTemplate()
+		command = template.format(
+			program = self.program, 
+			options = self.options[label], 
+			input_file = input_file, 
+			output_file = output_file,
+			output_folder = os.path.dirname(output_file))
 
+		return command
+	def getCommandTemplate(self):
+		return '{program} {options} "{output_file}" "{input_file}"'
+	def getProgramLocation(self):
+		return '\"F:\\Program Files\\PeaZip\\res\\7z\\7z.exe\"'
 class Z7(Algorithm):
 	name = "7z"
 	ext = ".7z"
-	def _defineCommands(self):
-		"""
-		"F:\Program Files\PeaZip\res\7z\7z.exe" a -t7z -m0=LZMA2 -mmt=on -mx5 -md=16m -mfb=32 -ms=2g -mqs=on -sccUTF-8 -bb0 "-wD:\Proginoskes\Documents\Github Sandbox\compression-algorithm-benchmarks\input_files\" "D:\Proginoskes\Documents\Github Sandbox\compression-algorithm-benchmarks\input_files\1790-2010_MASTER.7z" "D:\Proginoskes\Documents\Github Sandbox\compression-algorithm-benchmarks\input_files\1790-2010_MASTER.csv" 
-
-		"""
-		normal_command = '{program} a -t7z -m0=LZMA2 -mmt=on -mx5 -md=16m -mfb=32 -ms=2g -mqs=on -sccUTF-8 -bb0 "-w{input_folder}" "{output_file}" "{input_file}"'
-
-		commands = {
-			'normal': normal_command
+	def getAvailableOptions(self):
+		options = {
+			'fastest': 	"a -t7z -m0=LZMA2 -mmt=on -mx1 -md=64k -mfb=32 -ms=8m -mqs=on -sccUTF-8 -bb0",
+			'normal': 	"a -t7z -m0=LZMA2 -mmt=on -mx5 -md=16m -mfb=32 -ms=2g -mqs=on -sccUTF-8 -bb0",
+			'ultra': 	"a -t7z -m0=LZMA2 -mmt=on -mx9 -md=64m -mfb=64 -ms=4g -mqs=on -sccUTF-8 -bb0"
 		}
+		return options
 
-		return commands
+class Arc(Algorithm):
+	name = 'arc'
+	ext = '.arc'
+	def getProgramLocation(self):
+		return '\"F:\\Program Files\\PeaZip\\res\\arc\\arc.exe\"'
+	def getAvailableOptions(self):
+		options = {
+			'fastest': "a -m0 -s -rr -ae=aes",
+			'normal': "a -m4 -s -rr -ae=aes",
+			'ultra': "a -m9 -s -rr -ae=aes"
+		}
+		return options
 
+class Pea(Algorithm):
+	name = 'pea'
+	ext = '.pea'
+	def getProgramLocation(self):
+		return '\"F:\\Program Files\\PeaZip\\res\\pea.exe\"'
+	def getAvailableOptions(self):
+		options = {
+			'normal': '0 PCOMPRESS2 SHA3_256 CRC32 RIPEMD160 BATCH FROMCL'
+		}
+		return options
+	def getCommandTemplate(self):
+		template = '{program} PEA "{output_folder}" {options} "{input_file}"'
+		return template
 
 class Zip(Algorithm):
 	name = "zip"
 	ext = ".zip"
-	def _defineCommands(self):
+	def getAvailableOptions(self):
+		options = {
+			'fastest': 	"a -tzip -mm=Deflate -mmt=on -mx1 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0",
+			'normal': 	"a -tzip -mm=Deflate -mmt=on -mx5 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0",
+			'ultra': 	"a -tzip -mm=Deflate -mmt=on -mx9 -mfb=128 -mpass=10 -sccUTF-8 -mem=AES256 -bb0"
+		}
+		return options
 
-		normal_command = '{program} a -tzip -mm=Deflate -mmt=on -mx5 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0 \"-w{input_folder}\" \"{output_file}\" \"{input_file}\"'
-		commands = {
-			'normal': normal_command
+class XZ(Algorithm):
+	name = 'xz'
+	ext = '.xz'
+	def getAvailableOptions(self):
+		options = {
+			'fastest': 	"a -txz -mx1 -md=64k -mfb=32 -sccUTF-8 -bb0",
+			'normal': 	"a -txz -mx5 -md=16k -mfb=32 -sccUTF-8 -bb0",
+			'ultra': 	"a -txz -mx9 -md=64k -mfb=64 -sccUTF-8 -bb0"
+		}
+		return options
+class Tar(Algorithm):
+	name = 'tar'
+	ext = '.tar'
+	def getAvailableOptions(self):
+		options = {
+			'store': "a -ttar -mx0 -sccUTF-8 -bb0"
+		}
+		return options
+class Gzip(Algorithm):
+	name = 'gzip'
+	ext = '.gzip'
+	def getAvailableOptions(self):
+		options = {
+			'fastest': 	"a -tgzip -mx1 -mfb=8 -sccUTF-8 -bb0",
+			'normal': 	"a -tgzip -mx5 -mfb=32 -sccUTF-8 -bb0",
+			'ultra': 	"a -tgzip -mx9 -mfb=128 -sccUTF-8 -bb0"
 		}
 
-		return commands
+		return options
 
 class Pipeline:
 	def __init__(self, input_folder, output_folder):
-		algorithms = [Z7, Zip]
+		algorithms = [Z7, Arc, Gzip, Tar, Zip, XZ]
 		self.standard_benchmarks = self._loadStandardBenchmarks()
 		print("Running {0} algorithms...".format(len(algorithms)))
-		for fn in os.listdir(input_folder):
+		for index, fn in enumerate(os.listdir(input_folder)):
+			print(str(index+1) + ". Running the algorithms on ", fn)
 			input_file = os.path.join(input_folder, fn)
 			self.runAlgorithms(input_file, output_folder, algorithms)
 
@@ -215,49 +289,62 @@ class Pipeline:
 		basename = os.path.split(input_file)[-1]
 		standard_results = self.standard_benchmarks.get(basename)
 		if standard_results is None:
-			standard_program = Zip(input_file, output_folder, label = 'normal')
+			standard_program = Zip(input_file, output_folder, label = 'normal', tag = 'benchmark')
 			standard_results = standard_program.getResults('normal')
 			self._updateStandardBenchmarks(basename, standard_results)
 
 		return standard_results
 	@staticmethod
-	def convertDuration(duration):
+	def convertDuration(duration, transform = None):
 		if isinstance(duration, str):
 			duration = isodate.parse_duration(duration)
 		duration = (duration.days * 3600 * 24) + duration.seconds + (duration.microseconds / 1000000)
+		duration = duration / 60
+		if transform == 'log':
+			duration = math.log(duration)
+		if transform == 'sqrt':
+			duration = math.sqrt(duration)
+			duration = math.sqrt(duration) #fourth root scales better
+
 		return duration
 
 	def calculateWeissmanScore(self, ratio, duration, sratio, sduration):
+		duration = self.convertDuration(duration, 'sqrt')
+		sduration = self.convertDuration(sduration, 'sqrt')
 
-		duration = self.convertDuration(duration)
-		sduration = self.convertDuration(sduration)
+		if True:
+			duration = math.sqrt(duration)
+
 		alpha = 1
 
-		score = (ratio / float(sratio)) * (sduration / duration)
+		score = alpha * (ratio / float(sratio)) * (sduration / duration)
 		return score
 	def parseResults(self, results, standard_ratio, standard_duration):
-			for label, result in results.items():
-				result['label'] = label
-				score = self.calculateWeissmanScore(
-					result['compressionRatio'],
-					result['duration'],
-					standard_ratio,
-					standard_duration)
-				result['score'] = score
-				yield result
+		for label, result in results.items():
+			if result is None: continue
+			result['label'] = label
+			score = self.calculateWeissmanScore(
+				result['compressionRatio'],
+				result['duration'],
+				standard_ratio,
+				standard_duration)
+			result['score'] = score
+			yield result
 	def runAlgorithms(self, input_file, output_folder, algorithms):
 		standard_benchmark = self.getStandardValues(input_file, output_folder)
+		print('\tStandard Ratio: {:.3f}\tStandard Duration: {}'.format(float(standard_benchmark['compressionRatio']), standard_benchmark['duration']))
 		for algorithm in algorithms:
-			print("Running ", algorithm.name)
+			
 			program = algorithm(input_file, output_folder)
 			results = program.getResults()
 			results = self.parseResults(results, standard_benchmark['compressionRatio'], 
 				isodate.parse_duration(standard_benchmark['duration']))
 			self.updateLogFile(list(results))
-
 	def updateLogFile(self, rows):
 		if isinstance(rows, dict):
 			rows = [rows]
+		if len(rows) == 0:
+			return None
 		fieldnames = sorted(rows[0].keys())
 		with open(BENCHMARK_FILE, 'a', newline = "") as file1:
 			writer = csv.DictWriter(file1, delimiter = '\t', fieldnames = fieldnames)
@@ -275,7 +362,8 @@ def main():
 		
 
 def debug():
-	test = '\"F:\\Program Files\\PeaZip\\res\\7z\\7z.exe\"'
-	os.system(test)
+	for k, v in sorted(os.environ.items()):
+		print('{:<20}\t{}'.format(k, v))
 if __name__ == "__main__":
 	main()
+	#debug()
