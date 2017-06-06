@@ -1,71 +1,34 @@
 
-import isodate
 import math
 import os
 import datetime
 import shlex
 import subprocess
 import csv
-from pprint import pprint
 import time
+from pprint import pprint
+import sys
+import os
+GITHUB_FOLDER = os.path.dirname(os.getcwd())
+sys.path.append(GITHUB_FOLDER)
+import pytools.systemtools as systemtools
+import pytools.tabletools as tabletools
+import pytools.timertools as timertools
+
 BENCHMARK_FILE = os.path.join(os.getcwd(), "compression_benchmarks.tsv")
-STANDARD_BENCHMARK_FILENAME = "standard_benchmarks.tsv"
-OUTPUT_FOLDER = "C:\\Users\\Deitrickc\\Documents\\UPMC Files\\Projects\\misc\\output files\\"
-COMPUTER_NAME = os.getenv('COMPUTERNAME')
-OVERWRITE_FILES = True #Whether to overwrite existing files (True) or skip over them (False)
-
-def readCSV(filename, **kwargs):
-	delimiter = kwargs.get('delimiter', kwargs.get('sep', '\t'))
-	if os.path.exists(filename):
-		with open(filename, 'r') as file1:
-			reader = csv.DictReader(file1, delimiter = delimiter)
-			reader = list(reader)
-	else:
-		headers = []
-		reader = []
-
-	if kwargs.get('fieldnames', False):
-		return reader, headers
-	else:
-		return reader
-
-def writeCSV(table, filename, **kwargs):
-	#pprint(table)
-	if len(table) == 0: return None
-	if kwargs.get('fieldnames') is None:
-		fieldnames = sorted(table[0].keys())
-	delimiter = kwargs.get('delimiter', kwargs.get('sep', '\t'))
-	with open(filename, 'w', newline = "") as file1:
-		writer = csv.DictWriter(file1, delimiter = delimiter, fieldnames = fieldnames)
-		writer.writeheader()
-		writer.writerows(table)
-
-def Terminal(command, label = "", filename = None):
-	""" Calls the system shell.
-		Parameters
-		----------
-			command: string
-				The command to run.
-			label: string
-				Used to mark output in the console.
-			filename: string
-				If not None, will output to console as a file.
-	"""
-	if False:
-		#print(command)
-		process = os.system(command)
-		output = ""
-	else:
-		command = shlex.split(command)
-		process = subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-		output = str(process.stdout.read(),'utf-8')
-		#print(output)
-		#updateConsoleLog(filename, command, output, label)
-	return output
 
 class Algorithm:
-	def __init__(self, input_file, output_folder, **kwargs):
+	def __init__(self, name, command_label, input_file, output_folder, **kwargs):
 		"""
+			Parameters
+			----------
+				name: string
+					The name of the algorithm to use.
+				command_label: string
+					The specific command to use.
+				input_file: string [PATH]
+				output_folder: string [PATH]
+
 			Keyword Arguments
 			-----------------
 				label: string
@@ -76,60 +39,96 @@ class Algorithm:
 				duration: int, float; default None
 					The standard duration to use when calculating the Weissman score.
 		"""
-		self.tag = kwargs.get('tag', "")
-		if self.tag != "": self.tag += '.'
-		print("\tBenchmarking the algorithm used for", self.ext, 'files.')
-		self.setUpEnvironment(kwargs)
+		self.configuration = self.getAlgorithmSettings(name)
+		self.program = self.getProgramLocation()
 		self.runWorkflow(input_file, output_folder, use_label = kwargs.get('label'))
 
-	def __call__(self, label = None):
-		""" Retrieves the results of the most recent run for each available configuration. """
-		if label is None:
-			_last_run = self._most_recent_run
-		else:
-			_last_run = self._most_recent_run.get(label)
-		return _last_run
+	def getAlgorithmSettings(self, name):
+		""" Retrieves commands for the provided caller.
+		"""
+		configurations = {
+			'7z': {
+				'commands': {
+					'fastest': 	"a -t7z -m0=LZMA2 -mmt=on -mx1 -md=64k -mfb=32 -ms=8m -mqs=on -sccUTF-8 -bb0",
+					'normal': 	"a -t7z -m0=LZMA2 -mmt=on -mx5 -md=16m -mfb=32 -ms=2g -mqs=on -sccUTF-8 -bb0",
+					'ultra': 	"a -t7z -m0=LZMA2 -mmt=on -mx9 -md=64m -mfb=64 -ms=4g -mqs=on -sccUTF-8 -bb0"
+				},
+				'name': "",
+				'extension': ".7z",
+				'program': None
+			},
+			'arc': {
+				'commands': {
+					'fastest': "a -m0 -s -rr -ae=aes",
+					'normal':  "a -m4 -s -rr -ae=aes",
+					'ultra':   "a -m9 -s -rr -ae=aes"
+				},
+				'name': 'arc',
+				'extension': '.arc',
+				'program': os.path.join(PEAZIP_FOLDER, "res", "arc", "arc.exe")
+			},
+			'pea': {
+				'commands': {
+					'normal': '0 PCOMPRESS2 SHA3_256 CRC32 RIPEMD160 BATCH FROMCL'	
+				},
+				'name': 'peazip',
+				'extension': '.pea',
+				'program': default_program
+			},
+			'zip': {
+				'commands': {
+					'fastest': 	"a -tzip -mm=Deflate -mmt=on -mx1 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0",
+					'normal': 	"a -tzip -mm=Deflate -mmt=on -mx5 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0",
+					'ultra': 	"a -tzip -mm=Deflate -mmt=on -mx9 -mfb=128 -mpass=10 -sccUTF-8 -mem=AES256 -bb0"
+				},
+				'name': 'zip',
+				'extension': '.zip',
+				'program': None
+			},
+			'xz': {
+				'commands': {
+					'fastest': 	"a -txz -mx1 -md=64k -mfb=32 -sccUTF-8 -bb0",
+					'normal': 	"a -txz -mx5 -md=16k -mfb=32 -sccUTF-8 -bb0",
+					'ultra': 	"a -txz -mx9 -md=64k -mfb=64 -sccUTF-8 -bb0"
+				},
+				'name': 'xz',
+				'extension': '.xz',
+				'program': None
+			},
+			'tar': {
+				'commands': {
+					'store': "a -ttar -mx0 -sccUTF-8 -bb0"
+				},
+				'name': 'tar',
+				'extension': '.tar',
+				'program': None
+			},
+			'gzip': {
+				'commands': {
+					'fastest': 	"a -tgzip -mx1 -mfb=8 -sccUTF-8 -bb0",
+					'normal': 	"a -tgzip -mx5 -mfb=32 -sccUTF-8 -bb0",
+					'ultra': 	"a -tgzip -mx9 -mfb=128 -sccUTF-8 -bb0"
+				},
+				'name': 'gzip',
+				'extension': '.gzip',
+				'program': None
+			}
+		}
+		return configurations[name]
 
-	def getResults(self, label = None):
-
-		if label is None:
-			return self._most_recent_run
-		else:
-			return self._most_recent_run[label]
-
-	def setUpEnvironment(self, kwargs):
-		#self.program = "C:/Program Files/PeaZip/res/7z/7z.exe"
-		self.program = self.getProgramLocation()
-		self.options = self.getAvailableOptions()
-		self._most_recent_run = dict()
-		self._last_run_label = None
-		if "name" not in dir(self):
-			self.name = "Undefined_Name"
-			self.ext = "Undefined_Ext"
 	def runCommand(self, label, input_file, output_folder):
 		path, input_basename = os.path.split(input_file)
-		output_file = os.path.join(output_folder, self.tag + input_basename + '.' + label + self.ext)
-		initial_time = datetime.datetime.now()
-		#start = time.time()
+		ext = self.configuration['extension']
+		output_filename = os.path.join(input_basename, label, ext)
 
 		command = self.getAlgorithmCommand(label, input_file, output_file)
+		timer = timertools.Timer()
 
-		print("\t\tUsing settings as", label, end = ".")
-		if not os.path.exists(output_file) or OVERWRITE_FILES:
-			Terminal(command)
-		else:
-			print("\tThe file already existed.")
-			return None
+		systemtools.Terminal(command)
+		command_duration = timer.ISOFormat()
 
-		final_time = datetime.datetime.now()
-		#stop = time.time()
-		duration = final_time - initial_time
-		iso_duration = isodate.duration_isoformat(duration)
-		print("\tFinished in", iso_duration)
-		#duration = stop - start
-
-		initial_ext = os.path.splitext(input_file)[-1]
-		final_ext 	= os.path.splitext(output_file)[-1]
+		initial_ext  = os.path.splitext(input_file)[-1]
+		final_ext 	 = os.path.splitext(output_file)[-1]
 		initial_size = os.path.getsize(input_file)
 		final_size 	 = os.path.getsize(output_file)
 		compression_ratio = initial_size / final_size
@@ -151,21 +150,6 @@ class Algorithm:
 
 		return benchmark
 	
-	def runWorkflow(self, input_file, output_folder, use_label = None):
-		"""
-			Keyword Arguments
-			-----------------
-				'label': string
-					If provided, all other commands will be skipped.
-		"""
-		#commands = self._defineCommands()
-		available_labels = sorted(self.options.keys())
-		if use_label is not None: 
-			available_labels = [i for i in available_labels if i == use_label]
-		for label in available_labels:
-
-			self._most_recent_run[label] = self.runCommand(label, input_file, output_folder)
-			self._last_run_label = label
 	def getAlgorithmCommand(self, label, input_file, output_file):
 		template = self.getCommandTemplate()
 		command = template.format(
@@ -173,91 +157,18 @@ class Algorithm:
 			options = self.options[label], 
 			input_file = input_file, 
 			output_file = output_file,
-			output_folder = os.path.dirname(output_file))
-
+			output_folder = os.path.dirname(output_file)
+		)
 		return command
+	
 	def getCommandTemplate(self):
 		return '{program} {options} "{output_file}" "{input_file}"'
+	
 	def getProgramLocation(self):
-		return '\"F:\\Program Files\\PeaZip\\res\\7z\\7z.exe\"'
-class Z7(Algorithm):
-	name = "7z"
-	ext = ".7z"
-	def getAvailableOptions(self):
-		options = {
-			'fastest': 	"a -t7z -m0=LZMA2 -mmt=on -mx1 -md=64k -mfb=32 -ms=8m -mqs=on -sccUTF-8 -bb0",
-			'normal': 	"a -t7z -m0=LZMA2 -mmt=on -mx5 -md=16m -mfb=32 -ms=2g -mqs=on -sccUTF-8 -bb0",
-			'ultra': 	"a -t7z -m0=LZMA2 -mmt=on -mx9 -md=64m -mfb=64 -ms=4g -mqs=on -sccUTF-8 -bb0"
-		}
-		return options
-
-class Arc(Algorithm):
-	name = 'arc'
-	ext = '.arc'
-	def getProgramLocation(self):
-		return '\"F:\\Program Files\\PeaZip\\res\\arc\\arc.exe\"'
-	def getAvailableOptions(self):
-		options = {
-			'fastest': "a -m0 -s -rr -ae=aes",
-			'normal': "a -m4 -s -rr -ae=aes",
-			'ultra': "a -m9 -s -rr -ae=aes"
-		}
-		return options
-
-class Pea(Algorithm):
-	name = 'pea'
-	ext = '.pea'
-	def getProgramLocation(self):
-		return '\"F:\\Program Files\\PeaZip\\res\\pea.exe\"'
-	def getAvailableOptions(self):
-		options = {
-			'normal': '0 PCOMPRESS2 SHA3_256 CRC32 RIPEMD160 BATCH FROMCL'
-		}
-		return options
-	def getCommandTemplate(self):
-		template = '{program} PEA "{output_folder}" {options} "{input_file}"'
-		return template
-
-class Zip(Algorithm):
-	name = "zip"
-	ext = ".zip"
-	def getAvailableOptions(self):
-		options = {
-			'fastest': 	"a -tzip -mm=Deflate -mmt=on -mx1 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0",
-			'normal': 	"a -tzip -mm=Deflate -mmt=on -mx5 -mfb=32 -mpass=1 -sccUTF-8 -mem=AES256 -bb0",
-			'ultra': 	"a -tzip -mm=Deflate -mmt=on -mx9 -mfb=128 -mpass=10 -sccUTF-8 -mem=AES256 -bb0"
-		}
-		return options
-
-class XZ(Algorithm):
-	name = 'xz'
-	ext = '.xz'
-	def getAvailableOptions(self):
-		options = {
-			'fastest': 	"a -txz -mx1 -md=64k -mfb=32 -sccUTF-8 -bb0",
-			'normal': 	"a -txz -mx5 -md=16k -mfb=32 -sccUTF-8 -bb0",
-			'ultra': 	"a -txz -mx9 -md=64k -mfb=64 -sccUTF-8 -bb0"
-		}
-		return options
-class Tar(Algorithm):
-	name = 'tar'
-	ext = '.tar'
-	def getAvailableOptions(self):
-		options = {
-			'store': "a -ttar -mx0 -sccUTF-8 -bb0"
-		}
-		return options
-class Gzip(Algorithm):
-	name = 'gzip'
-	ext = '.gzip'
-	def getAvailableOptions(self):
-		options = {
-			'fastest': 	"a -tgzip -mx1 -mfb=8 -sccUTF-8 -bb0",
-			'normal': 	"a -tgzip -mx5 -mfb=32 -sccUTF-8 -bb0",
-			'ultra': 	"a -tgzip -mx9 -mfb=128 -sccUTF-8 -bb0"
-		}
-
-		return options
+		default_program = '\"F:\\Program Files\\PeaZip\\res\\7z\\7z.exe\"'
+		program_location = self.configuration.get('program')
+		if program_location is None: program_location = default_program
+		return program_location
 
 class Pipeline:
 	def __init__(self, input_folder, output_folder):
