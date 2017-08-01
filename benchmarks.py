@@ -39,11 +39,11 @@ class Algorithm:
 				duration: int, float; default None
 					The standard duration to use when calculating the Weissman score.
 		"""
-		self.configuration = self.getAlgorithmSettings(name)
-		self.program = self.getProgramLocation()
-		self.runWorkflow(input_file, output_folder, use_label = kwargs.get('label'))
+		self.configuration = self._getAlgorithmSettings(name)
+		self.program = self._getProgramLocation()
+		self._runCommand(command_label, input_file, output_folder)
 
-	def getAlgorithmSettings(self, name):
+	def _getAlgorithmSettings(self, name):
 		""" Retrieves commands for the provided caller.
 		"""
 		configurations = {
@@ -116,12 +116,12 @@ class Algorithm:
 		}
 		return configurations[name]
 
-	def runCommand(self, label, input_file, output_folder):
+	def _runCommand(self, label, input_file, output_folder):
 		path, input_basename = os.path.split(input_file)
 		ext = self.configuration['extension']
 		output_filename = os.path.join(input_basename, label, ext)
 
-		command = self.getAlgorithmCommand(label, input_file, output_file)
+		command = self._getAlgorithmCommand(label, input_file, output_file)
 		timer = timertools.Timer()
 
 		systemtools.Terminal(command)
@@ -150,8 +150,8 @@ class Algorithm:
 
 		return benchmark
 	
-	def getAlgorithmCommand(self, label, input_file, output_file):
-		template = self.getCommandTemplate()
+	def _getAlgorithmCommand(self, label, input_file, output_file):
+		template = self._getCommandTemplate()
 		command = template.format(
 			program = self.program, 
 			options = self.options[label], 
@@ -161,108 +161,25 @@ class Algorithm:
 		)
 		return command
 	
-	def getCommandTemplate(self):
+	def _getCommandTemplate(self):
 		return '{program} {options} "{output_file}" "{input_file}"'
 	
-	def getProgramLocation(self):
+	def _getProgramLocation(self):
 		default_program = '\"F:\\Program Files\\PeaZip\\res\\7z\\7z.exe\"'
 		program_location = self.configuration.get('program')
 		if program_location is None: program_location = default_program
 		return program_location
 
+	def export(self):
+		"""
+			Returns
+			-------
+				data: dict<>
+		"""
+
 class Pipeline:
-	def __init__(self, input_folder, output_folder):
-		algorithms = [Z7, Arc, Gzip, Tar, Zip, XZ]
-		self.standard_benchmarks = self._loadStandardBenchmarks()
-		print("Running {0} algorithms...".format(len(algorithms)))
-		for index, fn in enumerate(os.listdir(input_folder)):
-			print(str(index+1) + ". Running the algorithms on ", fn)
-			input_file = os.path.join(input_folder, fn)
-			self.runAlgorithms(input_file, output_folder, algorithms)
-
-	def _loadStandardBenchmarks(self):
-		table = readCSV(STANDARD_BENCHMARK_FILENAME)
-		benchmarks = dict()
-		for row in table:
-			benchmarks[row['filename']] = row
-
-		return benchmarks
-
-	def _saveStandardBenchmarks(self):
-		writeCSV(list(self.standard_benchmarks.values()), STANDARD_BENCHMARK_FILENAME)
-
-	def _updateStandardBenchmarks(self, basename, results):
-
-		self.standard_benchmarks[basename] = results
-		self._saveStandardBenchmarks()
-
-	def getStandardValues(self, input_file, output_folder):
-		basename = os.path.split(input_file)[-1]
-		standard_results = self.standard_benchmarks.get(basename)
-		if standard_results is None:
-			standard_program = Zip(input_file, output_folder, label = 'normal', tag = 'benchmark')
-			standard_results = standard_program.getResults('normal')
-			self._updateStandardBenchmarks(basename, standard_results)
-
-		return standard_results
-	@staticmethod
-	def convertDuration(duration, transform = None):
-		if isinstance(duration, str):
-			duration = isodate.parse_duration(duration)
-		duration = (duration.days * 3600 * 24) + duration.seconds + (duration.microseconds / 1000000)
-		duration = duration / 60
-		if transform == 'log':
-			duration = math.log(duration)
-		if transform == 'sqrt':
-			duration = math.sqrt(duration)
-			duration = math.sqrt(duration) #fourth root scales better
-
-		return duration
-
-	def calculateWeissmanScore(self, ratio, duration, sratio, sduration):
-		duration = self.convertDuration(duration, 'sqrt')
-		sduration = self.convertDuration(sduration, 'sqrt')
-
-		if True:
-			duration = math.sqrt(duration)
-
-		alpha = 1
-
-		score = alpha * (ratio / float(sratio)) * (sduration / duration)
-		return score
-	def parseResults(self, results, standard_ratio, standard_duration):
-		for label, result in results.items():
-			if result is None: continue
-			result['label'] = label
-			score = self.calculateWeissmanScore(
-				result['compressionRatio'],
-				result['duration'],
-				standard_ratio,
-				standard_duration)
-			result['score'] = score
-			yield result
-	def runAlgorithms(self, input_file, output_folder, algorithms):
-		standard_benchmark = self.getStandardValues(input_file, output_folder)
-		print('\tStandard Ratio: {:.3f}\tStandard Duration: {}'.format(float(standard_benchmark['compressionRatio']), standard_benchmark['duration']))
-		for algorithm in algorithms:
-			
-			program = algorithm(input_file, output_folder)
-			results = program.getResults()
-			results = self.parseResults(results, standard_benchmark['compressionRatio'], 
-				isodate.parse_duration(standard_benchmark['duration']))
-			self.updateLogFile(list(results))
-	def updateLogFile(self, rows):
-		if isinstance(rows, dict):
-			rows = [rows]
-		if len(rows) == 0:
-			return None
-		fieldnames = sorted(rows[0].keys())
-		with open(BENCHMARK_FILE, 'a', newline = "") as file1:
-			writer = csv.DictWriter(file1, delimiter = '\t', fieldnames = fieldnames)
-
-			if not os.path.exists(BENCHMARK_FILE) or os.path.getsize(BENCHMARK_FILE) == 0:
-				writer.writeheader()
-			writer.writerows(rows)
+	def __init__(self):
+		pass
 
 def main():
 	base_folder = "D:\\Proginoskes\\Documents\\Github Sandbox\\compression-algorithm-benchmarks\\"
