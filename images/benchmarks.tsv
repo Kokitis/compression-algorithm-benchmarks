@@ -1,9 +1,21 @@
-name	method	change	duration	initialSize	finalSize
-population.jpg	zip	0.147	0.067	1.489	1.271
-pluto.jpg	zip	0.067	0.161	3.454	3.221
-the moon.jpg	zip	0.01	0.007	0.103	0.102
-largeA.jpg	zip	0.008	0.111	2.552	2.531
-death star.jpg	zip	0.001	0.031	0.662	0.662
-wallpaper.jpg	zip	0.0	0.019	0.409	0.409
-largeB.jpg	zip	0.0	0.173	4.247	4.247
-dog.jpg	zip	-0.001	0.008	0.12	0.12
+name	method	score	change	duration	initialSize	finalSize
+Kuuro - Possession.png	convert	0.0	90.274	0.134	4.113	0.4
+ewjq9yb.png	convert	0.0	89.378	0.021	0.564	0.06
+ZYPoFxd.png	convert	0.0	88.182	0.046	0.831	0.098
+Fallen Titan.png	convert	0.0	88.104	0.123	2.68	0.319
+Pluto.png	convert	0.0	85.273	0.067	0.437	0.064
+Seoul.png	convert	0.0	84.611	0.056	2.329	0.358
+ZufjBPk.png	convert	0.0	84.198	0.104	3.524	0.557
+yLJ9uSm.png	convert	0.0	72.633	0.036	0.222	0.061
+Fukuchiyama,_Kyoto.png	convert	0.0	39.217	0.017	0.039	0.024
+GDP_PPP.png	convert	0.0	33.458	0.036	0.109	0.072
+8k5y7u8gdvj11.png	convert	0.0	31.254	0.179	1.29	0.887
+Sapporo, Hokkaido.png	convert	0.0	30.813	0.024	0.046	0.032
+geography.png	convert	0.0	24.847	0.01	0.061	0.046
+genetic_algorithms.png	convert	0.0	16.999	0.009	0.037	0.031
+tic_tac_toe.png	convert	0.0	15.17	0.05	0.616	0.523
+NAFTA.png	convert	0.0	12.3	0.03	0.029	0.025
+Black Sun.png	convert	0.0	5.119	0.085	0.229	0.218
+Antarctica.png	convert	0.0	-5.989	0.036	0.023	0.024
+28_hour_day.png	convert	0.0	-50.358	0.014	0.061	0.091
+anti_mind_virus.png	convert	0.0	-70.814	0.007	0.006	0.01
